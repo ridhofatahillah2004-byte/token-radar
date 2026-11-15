@@ -15,6 +15,8 @@
   <div class="meta" id="meta"></div>
 </header>
 
+<div class="facts" id="facts"></div>
+
 <main>
   <section class="controls" id="controls">
     <label>Search <input id="q" type="search" placeholder="name or slug…" autocomplete="off"></label>
@@ -26,6 +28,10 @@
       <option value="change">7-day change</option>
       <option value="age">Age (oldest first)</option>
     </select></label>
+    <span class="tabs" role="group" aria-label="Token status">
+      <button type="button" id="tabPre" class="tab on">Pre-token</button>
+      <button type="button" id="tabLive" class="tab">Live token</button>
+    </span>
     <span class="count" id="count"></span>
   </section>
 
@@ -49,11 +55,31 @@
           <th class="num">7d</th>
           <th class="num">Age</th>
           <th class="num">Implied value</th>
+          <th>Token</th>
         </tr>
       </thead>
       <tbody id="rows"></tbody>
     </table>
     <p class="empty" id="empty" hidden>No protocol matches this filter.</p>
+  </section>
+
+  <section id="liveWrap" hidden>
+    <p class="livenote">Token live: these protocols already trade, so their market cap is a fact, not a model. They are set aside from the pre-token ranking.</p>
+    <table id="live">
+      <thead>
+        <tr>
+          <th class="num">#</th>
+          <th>Protocol</th>
+          <th>Category</th>
+          <th>Chains</th>
+          <th class="num">TVL</th>
+          <th class="num">7d</th>
+          <th class="num">Market cap</th>
+          <th>Token</th>
+        </tr>
+      </thead>
+      <tbody id="liveRows"></tbody>
+    </table>
   </section>
 
   <section class="method">
@@ -69,9 +95,12 @@
     1 at listing, 1.5 at one year, 2.0 at three years (a missing listing date
     counts as the snapshot median age). The diversity factor discounts the
     second, third and later protocol of the same category by 5% a step, so the
-    top of the board is not one category echoing itself. Only protocols that
-    record no token are ranked, and wrapped, staked and bridged products of
-    tokens that already trade are left out. A protocol &ldquo;records no
+    top of the board is not one category echoing itself. The board ranks every
+    protocol in the snapshot that records no token and is not a wrapped, staked
+    or bridged product: the 40 on the house watchlist plus all 158 eligible
+    ones below the floor. The 24 largest protocols that already record a token
+    are set aside in their own Live token view with their market cap shown as a
+    fact, never mixed into the ranking. A protocol &ldquo;records no
     token&rdquo; in DefiLlama&rsquo;s data; that is not proof it has none.</p>
     <p class="src" id="src"></p>
   </section>

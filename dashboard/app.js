@@ -1,7 +1,9 @@
 // Token Launch Radar — renders window.RADAR (written by main.ts) as a board,
-// a filter and a detail view. No network: every value comes from data.js.
+// a filter, a detail view and a live-token view set aside from the ranking.
+// No network: every value comes from data.js.
 // Deep links for screenshots: ?q=text, ?cat=Category, ?wl=1 (watchlist only),
-// ?sort=rank|tvl|change|age, ?slug=protocol-slug (detail view).
+// ?sort=rank|tvl|change|age, ?tab=live (live-token view),
+// ?slug=protocol-slug (detail view).
 
 (function () {
   'use strict';
@@ -9,12 +11,14 @@
   var data = window.RADAR;
   var box = document.getElementById('rows');
   if (!data || !data.rows) {
-    box.innerHTML = '<tr><td colspan="8">No radar data found. Run main.ts first.</td></tr>';
+    box.innerHTML = '<tr><td colspan="9">No radar data found. Run main.ts first.</td></tr>';
     return;
   }
 
   var rows = data.rows;
+  var live = data.live || [];
   var params = new URLSearchParams(window.location.search);
+  var maxImplied = rows.length ? rows[0].implied_value_usd : 1;
 
   function esc(s) {
     return String(s)
@@ -47,11 +51,16 @@
     return esc(c.slice(0, 2).join(', ')) + ' +' + (c.length - 2);
   }
 
-  // Meta line and category list.
+  // Meta line, facts strip and source note.
   var watch = rows.filter(function (r) { return r.watchlist; }).length;
   document.getElementById('meta').innerHTML =
     '<b>' + rows.length + '</b> protocols &middot; <b>' + watch + '</b> watchlist<br>' +
-    'Snapshot ' + esc(data.as_of) + ' &middot; model radar-v2';
+    'Snapshot ' + esc(data.as_of) + ' &middot; model radar-v3';
+  document.getElementById('facts').innerHTML =
+    '<span>Watchlist covered <b>' + watch + ' / ' + (data.watchlist_size || watch) + '</b></span>' +
+    '<span>Pre-token rows scored <b>' + rows.length + '</b></span>' +
+    '<span>Early rows below the floor <b>' + (data.early_size || 0) + '</b></span>' +
+    '<span>Live-token protocols set aside <b>' + live.length + '</b></span>';
   document.getElementById('src').textContent =
     'Source: DefiLlama protocol snapshot as of ' + data.as_of + '. Implied values are this radar’s own claim, not a prediction of a launch date or price.';
 
@@ -87,6 +96,8 @@
   catSel.addEventListener('change', function () { go({ cat: catSel.value, slug: '' }); });
   wlBox.addEventListener('change', function () { go({ wl: wlBox.checked ? '1' : '', slug: '' }); });
   sortSel.addEventListener('change', function () { go({ sort: sortSel.value }); });
+  document.getElementById('tabPre').addEventListener('click', function () { go({ tab: '', slug: '' }); });
+  document.getElementById('tabLive').addEventListener('click', function () { go({ tab: 'live', slug: '' }); });
 
   // Scatter chart: TVL against implied value, log scales, drawn as inline SVG
   // from the same rows the table shows. Gold dots are watchlist rows.
@@ -104,7 +115,7 @@
     var t;
     for (t = x0; t <= x1; t++) {
       s += '<line x1="' + X(t) + '" y1="' + PT + '" x2="' + X(t) + '" y2="' + (H - PB) + '" class="grid"/>' +
-        '<text x="' + X(t) + '" y="' + (H - 12) + '" class="axis" text-anchor="' + (t === x1 ? 'end' : 'middle') + '">$10^' + t + '</text>';
+        '<text x="' + X(t) + '" y="' + (H - 16) + '" class="axis" text-anchor="' + (t === x1 ? 'end' : 'middle') + '">$10^' + t + '</text>';
     }
     for (t = y0; t <= y1; t++) {
       s += '<line x1="' + PL + '" y1="' + Y(t) + '" x2="' + (W - PR) + '" y2="' + Y(t) + '" class="grid"/>' +
@@ -151,6 +162,7 @@
     box.innerHTML = list.map(function (r) {
       var cls = r.rank <= 3 ? ' class="rank' + r.rank + '"' : '';
       var badge = r.watchlist ? ' <span class="wl" title="On the house watchlist">&#9733; Watchlist</span>' : '';
+      var pct = Math.max(2, Math.round(r.implied_value_usd / maxImplied * 100));
       return '<tr data-slug="' + esc(r.slug) + '">' +
         '<td class="num"' + cls + '>' + r.rank + '</td>' +
         '<td><span class="name">' + esc(r.name) + '</span>' + badge + '<br><span class="slug">' + esc(r.slug) + '</span></td>' +
@@ -159,12 +171,30 @@
         '<td class="num">' + fmtUSD(r.tvl_usd) + '</td>' +
         '<td class="num">' + fmtPct(r.change_7d) + '</td>' +
         '<td class="num">' + fmtAge(r.age_days) + '</td>' +
-        '<td class="num"><b>' + fmtUSD(r.implied_value_usd) + '</b></td>' +
+        '<td class="num"><b>' + fmtUSD(r.implied_value_usd) + '</b><span class="bar" style="width:' + pct + '%"></span></td>' +
+        '<td><span class="notoken">&#9679; no token</span></td>' +
         '</tr>';
     }).join('');
     box.querySelectorAll('tr').forEach(function (tr) {
       tr.addEventListener('click', function () { go({ slug: tr.getAttribute('data-slug') }); });
     });
+  }
+
+  function renderLive() {
+    document.getElementById('count').textContent = live.length + ' live-token protocols';
+    var el = document.getElementById('liveRows');
+    el.innerHTML = live.map(function (r, i) {
+      return '<tr>' +
+        '<td class="num">' + (i + 1) + '</td>' +
+        '<td><span class="name">' + esc(r.name) + '</span><br><span class="slug">' + esc(r.slug) + '</span></td>' +
+        '<td>' + esc(r.category || '—') + '</td>' +
+        '<td>' + chainsOf(r) + '</td>' +
+        '<td class="num">' + fmtUSD(r.tvl_usd) + '</td>' +
+        '<td class="num">' + fmtPct(r.change_7d) + '</td>' +
+        '<td class="num"><b>' + fmtUSD(r.mcap_usd || 0) + '</b></td>' +
+        '<td><span class="livetok">&#9679; live</span></td>' +
+        '</tr>';
+    }).join('');
   }
 
   function renderDetail(slug) {
@@ -205,6 +235,21 @@
     document.getElementById('backBtn').addEventListener('click', function () { go({ slug: '' }); });
   }
 
+  var tab = params.get('tab') || '';
   var slug = params.get('slug') || '';
-  if (slug) renderDetail(slug); else renderBoard();
+  var tabPre = document.getElementById('tabPre');
+  var tabLive = document.getElementById('tabLive');
+  if (tab === 'live') {
+    tabPre.classList.remove('on');
+    tabLive.classList.add('on');
+    document.getElementById('chartWrap').style.display = 'none';
+    document.getElementById('boardWrap').hidden = true;
+    document.getElementById('liveWrap').hidden = false;
+    document.querySelectorAll('#controls label').forEach(function (l) { l.style.display = 'none'; });
+    renderLive();
+  } else if (slug) {
+    renderDetail(slug);
+  } else {
+    renderBoard();
+  }
 })();

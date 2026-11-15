@@ -1,4 +1,4 @@
-// Token launch radar, model v1.
+// Token launch radar, model v3.
 //
 // Reads a sealed DefiLlama snapshot, ranks the protocols that record no token
 // by an implied launch value, and writes the board, the dashboard data, the
@@ -21,7 +21,14 @@ const REPO_ROOT = fileURLToPath(new URL('.', import.meta.url));
 const OUTPUT_DIR = process.env.MAKEFUN_OUTPUT_DIR ?? '/output';
 const DEFAULT_INPUT = '/input/snapshot.json';
 const TEXT_MAX_BYTES = 65536;
-const BOARD_ROWS = 100;
+// Every radar-eligible protocol in the snapshot: the 40 on the watchlist plus
+// all 158 eligible ones below the floor, so the board is the whole radar, not
+// a top-100 slice. (198 = 40 watchlist + 158 early; the eligibility rule
+// admits no more in this snapshot.)
+const BOARD_ROWS = 198;
+// The live-token protocols the dashboard sets aside from the ranked board,
+// by market cap: their market value is a fact, not a model.
+const LIVE_ROWS = 24;
 const MATURITY_CAP_DAYS = 1825; // 5 years: log maturity saturates, so a longer cap only flattens.
 
 type SnapshotProtocol = {
@@ -317,6 +324,7 @@ function farmSteps(p: SnapshotProtocol): string[] {
     fill(middle[0]),
     fill(middle[1]),
     `Save every wallet address, transaction hash and date from your ${p.name} activity in one note; a future token claim often asks for proof of early use, and this takes 5 minutes.`,
+    `Before you withdraw anything, open ${p.name}’s own points or rewards page and claim only from the link it publishes; a real claim never asks you to pay or to connect a fresh wallet, and checking takes about 10 minutes.`,
     `Check ${p.name}’s official announcements once a week for a token or points program, and never pay anyone offering to sell the token early; each check takes about 10 minutes.`,
   ];
   for (const s of steps) {
@@ -385,8 +393,9 @@ function main(): void {
     return { p: s.p, age: s.age, gf: s.gf, mf: s.mf, df, implied: Math.round(s.rawImplied * df) };
   });
 
-  // The board is the whole watchlist plus the 60 highest-implied eligible
-  // protocols outside it, ranked by implied value, slug breaking ties.
+  // The board is the whole watchlist plus every other eligible protocol in
+  // the snapshot, ranked by implied value, slug breaking ties. Nothing
+  // eligible is left out: the early rows are the radar's whole point.
   const watchlist = new Set(snapshot.watchlist);
   const inWatchlist = scored.filter((s) => watchlist.has(s.p.slug));
   const outside = scored
@@ -442,22 +451,50 @@ function main(): void {
   }
 
   const modelNote = {
-    name: 'radar-v2',
+    name: 'radar-v3',
     formula: 'implied_value_usd = round(tvl_usd * market_multiple * growth_factor * maturity_factor * diversity_factor)',
     market_multiple: `median mcap_usd/tvl_usd across the ${snapshot.protocols.filter((p) => p.mcap_usd !== null && p.mcap_usd > 0).length} protocols in this snapshot that record a token with a positive market cap: ${multiple}`,
     growth_factor: `relative to the snapshot week: (1 + clamp(change_7d, -50, 100)/100) / (1 + ${medChange}/100); the median protocol changed ${medChange}% that week, so a flat protocol scores above 1 and one that fell with the pack scores 1; a missing change_7d counts as 0`,
     maturity_factor: '1 + ln(1 + min(age_days, 1825)/365) / ln(4): 1 at listing, 1.5 at one year, 2.0 at three years, about 2.29 at five years; age_days from listed_at to as_of, a missing listed_at counts as the snapshot median age',
     diversity_factor: '1 / (1 + 0.05 * (category_rank - 1)): the n-th protocol of a category by raw value is discounted 5% a step, so the board top is not one category echoing itself; a protocol with no category is not discounted',
     eligibility: 'records no token (gecko_id and symbol null) and is not a wrapped, staked or bridged product: category not Bridge, Canonical Bridge, Liquid Staking, Liquid Restaking, Restaked BTC or CEX; name has no whole word wrapped, staked or staking, no version-marker suffix, and does not start with an exchange name',
-    selection: 'every watchlist protocol plus the 60 highest-implied eligible protocols outside the watchlist, ranked by implied value with slug breaking ties',
+    selection: 'every watchlist protocol plus every other eligible protocol in the snapshot, ranked by implied value with slug breaking ties',
+    live_set_aside: 'the 24 protocols with the largest market cap that already record a token (excluding CEX) are set aside in their own view with their market cap as a fact, never mixed into the ranked board',
   };
+
+  // The live-token protocols, set aside: they already trade, so the dashboard
+  // shows the market's own value for them, never a model's. By market cap,
+  // CEX excluded, exactly as the board's separation promises.
+  const live = snapshot.protocols
+    .filter((p) => !isPreToken(p) && p.category !== 'CEX')
+    .sort((a, b) => (b.mcap_usd ?? 0) - (a.mcap_usd ?? 0) || (b.tvl_usd - a.tvl_usd) || (a.slug < b.slug ? -1 : 1))
+    .slice(0, LIVE_ROWS)
+    .map((p) => ({
+      slug: p.slug,
+      name: p.name,
+      category: p.category,
+      chains: p.chains,
+      tvl_usd: p.tvl_usd,
+      change_7d: p.change_7d,
+      mcap_usd: p.mcap_usd,
+    }));
 
   mkdirSync(OUTPUT_DIR, { recursive: true });
   const boardDoc = { as_of: snapshot.as_of, model: modelNote, rows };
   writeFileSync(join(OUTPUT_DIR, 'board.json'), JSON.stringify(boardDoc, null, 2) + '\n', 'utf-8');
+  const dashboardData = {
+    as_of: snapshot.as_of,
+    model: modelNote,
+    watchlist_size: snapshot.watchlist.length,
+    board_size: rows.length,
+    early_size: rows.filter((r) => !r.watchlist).length,
+    live_size: live.length,
+    rows,
+    live,
+  };
   writeFileSync(
     join(OUTPUT_DIR, 'data.js'),
-    'window.RADAR = ' + JSON.stringify({ as_of: snapshot.as_of, model: modelNote, rows }) + ';\n',
+    'window.RADAR = ' + JSON.stringify(dashboardData) + ';\n',
     'utf-8',
   );
 
@@ -473,7 +510,7 @@ function main(): void {
   const dossier = buildDossier(OUTPUT_DIR, { text_max_bytes: TEXT_MAX_BYTES });
   writeFileSync(join(OUTPUT_DIR, 'dossier.json'), dossier);
 
-  console.log(`board: ${rows.length} rows, rank 1 ${rows[0].slug} $${rows[0].implied_value_usd}, rank ${rows.length} ${rows[rows.length - 1].slug} $${rows[rows.length - 1].implied_value_usd}`);
+  console.log(`board: ${rows.length} rows, rank 1 ${rows[0].slug} $${rows[0].implied_value_usd}, rank ${rows.length} ${rows[rows.length - 1].slug} $${rows[rows.length - 1].implied_value_usd}, live set aside: ${live.length}`);
   console.log(`wrote ${OUTPUT_DIR}`);
 }
 
