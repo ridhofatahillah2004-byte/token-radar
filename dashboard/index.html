@@ -1,0 +1,83 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Token Launch Radar</title>
+<link rel="stylesheet" href="app.css">
+</head>
+<body>
+<header class="top">
+  <div>
+    <h1>Token Launch Radar</h1>
+    <p class="sub">Protocols that record no token yet, ranked by what their launch would be worth.</p>
+  </div>
+  <div class="meta" id="meta"></div>
+</header>
+
+<main>
+  <section class="controls" id="controls">
+    <label>Search <input id="q" type="search" placeholder="name or slug…" autocomplete="off"></label>
+    <label>Category <select id="cat"><option value="">All categories</option></select></label>
+    <label class="check"><input id="wl" type="checkbox"> Watchlist only</label>
+    <label>Sort <select id="sort">
+      <option value="rank">Implied value</option>
+      <option value="tvl">TVL</option>
+      <option value="change">7-day change</option>
+      <option value="age">Age (oldest first)</option>
+    </select></label>
+    <span class="count" id="count"></span>
+  </section>
+
+  <section id="chartWrap" class="chartWrap">
+    <h2>TVL vs implied value</h2>
+    <p class="chartnote">Each dot is one protocol on the board. Gold dots are the house watchlist; teal dots are the early finds below the floor. Both axes are logarithmic.</p>
+    <div id="chart"></div>
+  </section>
+
+  <section id="detail" class="detail" hidden></section>
+
+  <section id="boardWrap">
+    <table id="board">
+      <thead>
+        <tr>
+          <th class="num">#</th>
+          <th>Protocol</th>
+          <th>Category</th>
+          <th>Chains</th>
+          <th class="num">TVL</th>
+          <th class="num">7d</th>
+          <th class="num">Age</th>
+          <th class="num">Implied value</th>
+        </tr>
+      </thead>
+      <tbody id="rows"></tbody>
+    </table>
+    <p class="empty" id="empty" hidden>No protocol matches this filter.</p>
+  </section>
+
+  <section class="method">
+    <h2>How the value is worked out</h2>
+    <p>Implied value = TVL &times; market multiple &times; growth factor &times; maturity
+    factor &times; diversity factor. The market multiple is the median
+    market-cap-per-dollar-of-TVL of the protocols in this snapshot that already
+    record a token with a positive market cap (0.2227 here), so a launch is priced the way the market
+    already prices tokens that trade. The growth factor measures the
+    protocol&rsquo;s seven-day TVL change against the snapshot week&rsquo;s median
+    (&minus;8.2%), clamped to &minus;50%…+100% (a missing change counts as 0%).
+    The maturity factor is logarithmic in how long it has run with no token:
+    1 at listing, 1.5 at one year, 2.0 at three years (a missing listing date
+    counts as the snapshot median age). The diversity factor discounts the
+    second, third and later protocol of the same category by 5% a step, so the
+    top of the board is not one category echoing itself. Only protocols that
+    record no token are ranked, and wrapped, staked and bridged products of
+    tokens that already trade are left out. A protocol &ldquo;records no
+    token&rdquo; in DefiLlama&rsquo;s data; that is not proof it has none.</p>
+    <p class="src" id="src"></p>
+  </section>
+</main>
+
+<script src="../data.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
